@@ -1,0 +1,46 @@
+# Dependencies (client, server, and any nested packages)
+node_modules/
+
+# Build output and caches
+dist/
+dist-ssr/
+build/
+*.tsbuildinfo
+.vite/
+.vite-temp/
+.cache/
+.eslintcache
+
+# Environment files; keep placeholder-only setup templates
+.env
+.env.*
+!.env.example
+
+# Test results, coverage, and Playwright artifacts
+test-results/
+testresults/
+playwright-report/
+blob-report/
+playwright/.cache/
+coverage/
+.nyc_output/
+
+# Private uploaded documents
+/server/uploads/
+/uploads/
+
+# Runtime logs
+logs/
+*.log
+*.pid
+*.pid.lock
+
+# Local editor and operating-system files
+.vscode/
+.idea/
+*.suo
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+Desktop.ini
