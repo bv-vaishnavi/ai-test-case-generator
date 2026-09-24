@@ -10,7 +10,8 @@ import {
   RefreshCw,
   X,
   GitBranch,
-  ArrowDown,
+  Minus,
+  Plus,
   Search,
   Check,
 } from "lucide-react";
@@ -185,79 +186,20 @@ function ReviewWorkspace({
   }
   return (
     <div
-      className={`results-page ${wide || workflow ? "results-expanded" : ""}`}
+      className={`results-page ${wide || workflow ? "results-expanded" : ""} ${workflow ? "workflow-open" : ""}`}
     >
       {workflow && (
-        <section className="workflow-pane">
-          <header>
-            <h2>Workflow</h2>
-            <button
-              className="icon-btn"
-              aria-label="Close workflow"
-              onClick={() => setWorkflowId(null)}
-            >
-              <X size={18} />
-            </button>
-          </header>
-          <label className="field">
-            Select workflow
-            <select
-              value={workflow._id}
-              onChange={(e) => setWorkflowId(e.target.value)}
-            >
-              {project.workflows.map((w) => (
-                <option value={w._id} key={w._id}>
-                  {w.title}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className="workflow-map">
-            <div className="map-root">
-              <GitBranch size={20} />
-              <strong>{workflow.title}</strong>
-              <p>{workflow.description}</p>
-            </div>
-            <ArrowDown className="map-arrow" />
-            <div className="map-nodes">
-              {project.rules
-                .filter((r) => r.workflowId === workflow._id)
-                .map((rule) => (
-                  <div className="map-node" key={rule._id}>
-                    <span className="eyebrow">BUSINESS RULE</span>
-                    <strong>{rule.title}</strong>
-                    <p>{rule.description}</p>
-                  </div>
-                ))}
-            </div>
-            <ArrowDown className="map-arrow" />
-            <div className="map-nodes">
-              {project.testCases
-                .filter((c) => c.workflowId === workflow._id)
-                .map((c) => (
-                  <div className="map-node" key={c._id}>
-                    <span className={`badge ${c.type}`}>{c.type}</span>
-                    <strong>{c.title}</strong>
-                  </div>
-                ))}
-            </div>
-          </div>
-          <div className="actions">
-            <button className="btn" onClick={() => setWorkflowId(null)}>
-              Close
-            </button>
-            <button
-              className="btn primary"
-              disabled={disabled}
-              onClick={() => {
-                void bulk([workflow._id], "approve");
-                setWorkflowId(null);
-              }}
-            >
-              Approve workflow
-            </button>
-          </div>
-        </section>
+        <WorkflowCanvas
+          project={project}
+          workflow={workflow}
+          disabled={disabled}
+          onSelect={setWorkflowId}
+          onClose={() => setWorkflowId(null)}
+          onApprove={() => {
+            void bulk([workflow._id], "approve");
+            setWorkflowId(null);
+          }}
+        />
       )}
       <div className="review-column">
         <Notice>
@@ -568,6 +510,229 @@ function ReviewWorkspace({
           </div>
         </Modal>
       )}
+    </div>
+  );
+}
+
+function WorkflowCanvas({
+  project,
+  workflow,
+  disabled,
+  onSelect,
+  onClose,
+  onApprove,
+}: {
+  project: Project;
+  workflow: ReviewItem;
+  disabled: boolean;
+  onSelect: (id: string) => void;
+  onClose: () => void;
+  onApprove: () => void;
+}) {
+  const [zoom, setZoom] = useState(0.75);
+  const rules = project.rules.filter(
+    (item) => item.workflowId === workflow._id,
+  );
+  const stories = project.userStories.filter(
+    (item) => item.workflowId === workflow._id,
+  );
+  const cases = project.testCases.filter(
+    (item) => item.workflowId === workflow._id,
+  );
+  const rowGap = 86;
+  const height = Math.max(
+    570,
+    Math.max(rules.length, stories.length, cases.length, 1) * rowGap + 80,
+  );
+  const centerY = height / 2;
+  const distribute = <T,>(items: T[]) =>
+    items.map((item, index) => ({
+      item,
+      y: centerY + (index - (items.length - 1) / 2) * rowGap,
+    }));
+  const ruleNodes = distribute(rules);
+  const storyNodes = distribute(stories);
+  const caseNodes = distribute(cases);
+  const path = (x1: number, y1: number, x2: number, y2: number) =>
+    `M ${x1} ${y1} C ${x1 + 75} ${y1}, ${x2 - 75} ${y2}, ${x2} ${y2}`;
+  const nearestParent = <T,>(
+    nodes: { item: T; y: number }[],
+    index: number,
+    total: number,
+  ) =>
+    nodes.length
+      ? nodes[
+      Math.min(
+        nodes.length - 1,
+        Math.floor((index * nodes.length) / Math.max(total, 1)),
+      )
+      ]
+      : null;
+
+  return (
+    <section
+      className="workflow-pane"
+      aria-label={`${workflow.title} workflow map`}
+    >
+      <header>
+        <h2>Workflow</h2>
+        <button
+          className="icon-btn"
+          aria-label="Close workflow"
+          onClick={onClose}
+        >
+          <X size={22} />
+        </button>
+      </header>
+      <select
+        className="workflow-selector"
+        aria-label="Select workflow"
+        value={workflow._id}
+        onChange={(event) => onSelect(event.target.value)}
+      >
+        {project.workflows.map((item, index) => (
+          <option value={item._id} key={item._id}>
+            Workflow {index + 1}: {item.title}
+          </option>
+        ))}
+      </select>
+      <div className="workflow-canvas-viewport">
+        <div
+          className="workflow-canvas"
+          style={{ height, transform: `scale(${zoom})` }}
+        >
+          <svg
+            className="workflow-connectors"
+            width="1480"
+            height={height}
+            aria-hidden="true"
+          >
+            <path className="active" d={path(205, centerY, 315, centerY)} />
+            {ruleNodes.map((node) => (
+              <path
+                key={`rule-${node.item._id}`}
+                d={path(505, centerY, 615, node.y)}
+              />
+            ))}
+            {storyNodes.map((node, index) => {
+              const parent = nearestParent(ruleNodes, index, storyNodes.length);
+              return parent ? (
+                <path
+                  key={`story-${node.item._id}`}
+                  d={path(805, parent.y, 915, node.y)}
+                />
+              ) : null;
+            })}
+            {caseNodes.map((node, index) => {
+              const parent = nearestParent(storyNodes, index, caseNodes.length);
+              return parent ? (
+                <path
+                  key={`case-${node.item._id}`}
+                  d={path(1105, parent.y, 1215, node.y)}
+                />
+              ) : null;
+            })}
+          </svg>
+          <WorkflowNode
+            x={25}
+            y={centerY}
+            type="Application"
+            title={project.name}
+            tone="application"
+          />
+          <WorkflowNode
+            x={315}
+            y={centerY}
+            type="Decision"
+            title={workflow.title}
+            tone="decision"
+          />
+          {ruleNodes.map(({ item, y }, index) => (
+            <WorkflowNode
+              key={item._id}
+              x={615}
+              y={y}
+              type="Rule"
+              title={item.title}
+              muted={index !== Math.floor(ruleNodes.length / 2)}
+            />
+          ))}
+          {storyNodes.map(({ item, y }, index) => (
+            <WorkflowNode
+              key={item._id}
+              x={915}
+              y={y}
+              type="User story"
+              title={item.title}
+              muted={index !== Math.floor(storyNodes.length / 2)}
+            />
+          ))}
+          {caseNodes.map(({ item, y }, index) => (
+            <WorkflowNode
+              key={item._id}
+              x={1215}
+              y={y}
+              type="Test case"
+              title={item.title}
+              muted={index !== Math.floor(caseNodes.length / 2)}
+            />
+          ))}
+        </div>
+      </div>
+      <div className="workflow-zoom" aria-label="Workflow zoom controls">
+        <button
+          aria-label="Zoom out"
+          onClick={() => setZoom(Math.max(0.5, zoom - 0.25))}
+        >
+          <Minus size={15} />
+        </button>
+        <span>{Math.round(zoom * 100)}%</span>
+        <button
+          aria-label="Zoom in"
+          onClick={() => setZoom(Math.min(1.25, zoom + 0.25))}
+        >
+          <Plus size={15} />
+        </button>
+      </div>
+      <footer>
+        <button className="btn" onClick={onClose}>
+          Cancel
+        </button>
+        <button className="btn primary" disabled={disabled} onClick={onApprove}>
+          Approve &amp; Proceed
+        </button>
+      </footer>
+    </section>
+  );
+}
+
+function WorkflowNode({
+  x,
+  y,
+  type,
+  title,
+  tone = "workflow",
+  muted = false,
+}: {
+  x: number;
+  y: number;
+  type: string;
+  title: string;
+  tone?: string;
+  muted?: boolean;
+}) {
+  return (
+    <div
+      className={`workflow-node ${tone} ${muted ? "muted-node" : ""}`}
+      style={{ left: x, top: y - 31 }}
+    >
+      <span>
+        <GitBranch size={12} /> {type}
+      </span>
+      <strong>{title}</strong>
+      <div className="workflow-node-counts">
+        <i /> <i /> <i />
+      </div>
     </div>
   );
 }
